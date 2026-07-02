@@ -57,7 +57,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package.outputs.apk }}
+          name: CodexPanel-Android-APK
           path: ${{ steps.package.outputs.apk }}
 
       - name: Publish GitHub Release
@@ -83,4 +83,3 @@ jobs:
             git push origin "${TAG}"
             gh release create "${TAG}" "${APK}" --title "CodexPanel Android ${TAG}" --notes "${NOTES}" --latest
           fi
-

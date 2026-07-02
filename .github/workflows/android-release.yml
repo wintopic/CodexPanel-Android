@@ -66,10 +66,10 @@ jobs:
         run: |
           NOTES="CodexPanel Android ${TAG}
 
-- App 名称：CodexPanel
-- 远控页面复用 CodexPanel WAN
-- 配置和远控密钥仅保存在手机本机 App 私有数据中
-- APK 使用调试签名，适合侧载安装和功能验证"
+          - App 名称：CodexPanel
+          - 远控页面复用 CodexPanel WAN
+          - 配置和远控密钥仅保存在手机本机 App 私有数据中
+          - APK 使用调试签名，适合侧载安装和功能验证"
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" "${APK}" --clobber

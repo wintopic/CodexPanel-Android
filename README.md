@@ -4,23 +4,27 @@ CodexPanel Android 是 CodexPanel 的安卓远控客户端。App 名称为 **Cod
 
 ## 工作原理
 
-本项目采用原生 Android WebView 容器方案，直接复用 CodexPanel WAN 远端页面能力，而不是重新实现一套远控协议或界面。
+本项目采用原生 Android 控制台方案，不使用 WebView。App 直接调用 CodexPanel 桌面端通过 CodexPanel WAN 暴露的远控 HTTP API。
 
 这样做的目的很明确：
 
-- 远端网页新增功能后，Android App 可以最大程度保持兼容。
-- 文本发送、文件选择、图片上传、会话操作等能力由远端页面统一承载。
-- App 只负责移动端容器、配置保存、权限桥接和系统集成。
+- 文本发送、图片上传、会话操作、停止生成、线程管理等能力由原生组件触发。
+- Cloudflare WAN 仍然只负责透明中转，真正控制 Codex Desktop 的仍然是电脑端 CodexPanel。
+- Android App 负责移动端原生界面、配置保存、线路请求、附件读取和状态轮询。
 
 ## 支持能力
 
 - 保存 Cloudflare 服务地址、设备路径、远控密钥。
 - 支持粘贴完整远控入口，例如 `https://codexpanel-wan.pages.dev/remote/win/?token=******`。
 - 自动解析完整远控入口中的服务地址、设备路径和 token。
-- 使用 Android WebView 打开远控页面。
-- 支持 JavaScript、Cookie、localStorage、文件选择、图片上传。
-- 支持摄像头、麦克风等 WebView 权限请求。
-- 支持 Android 返回键返回网页历史。
+- 原生线程列表、聊天记录、发送框、快捷操作。
+- 支持发送文本和图片附件。
+- 支持停止生成、新建线程、选择线程。
+- 支持置顶、取消置顶、重命名、归档线程。
+- 支持模型切换、推理模式切换。
+- 支持 Slash command 和 Codex App 快捷命令。
+- 支持服务诊断。
+- 支持 Android 原生文件选择。
 - 支持从系统浏览器分享或打开远控链接到 App。
 
 ## 安全说明
@@ -78,4 +82,3 @@ app/build/outputs/apk/release/app-release.apk
 3. 读取 `app/build.gradle` 中的 `versionName`。
 4. 发布或更新对应版本的 GitHub Release。
 5. 上传 `CodexPanel-Android-v版本号.apk`。
-

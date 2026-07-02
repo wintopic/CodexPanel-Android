@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -18,8 +19,10 @@ import android.text.InputType;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.MimeTypeMap;
 import android.widget.Button;
@@ -68,8 +71,10 @@ public class MainActivity extends Activity {
     private TextView attachmentText;
     private LinearLayout messageList;
     private ScrollView messageScroll;
+    private TextView activeAssistantBubble;
     private EditText composerInput;
     private Button sendButton;
+    private Button guideButton;
     private Button stopButton;
     private ProgressBar progressBar;
 
@@ -77,6 +82,8 @@ public class MainActivity extends Activity {
     private JSONObject activeWatch;
     private Runnable pollRunnable;
     private boolean busy;
+    private boolean activeRun;
+    private boolean keyboardOpen;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -216,6 +223,7 @@ public class MainActivity extends Activity {
         root.addView(composer(), new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
+        installKeyboardBottomFix(root);
         renderEmpty();
         checkHealth();
         loadConfig();
@@ -232,7 +240,7 @@ public class MainActivity extends Activity {
         row.addView(chip("计划", v -> sendSlash("/plan")));
         row.addView(chip("评审", v -> sendSlash("/review")));
         row.addView(chip("目标", v -> sendSlash("/goal")));
-        row.addView(chip("压缩", v -> sendText("/compact", true)));
+        row.addView(chip("压缩", v -> sendText("/compact", true, "queue")));
         row.addView(chip("模型", v -> chooseModel()));
         row.addView(chip("推理", v -> chooseReasoning()));
         row.addView(chip("线程操作", v -> chooseThreadAction()));
@@ -264,8 +272,32 @@ public class MainActivity extends Activity {
         composerInput.setMaxLines(5);
         composerInput.setTextSize(15);
         composerInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        composerInput.setSingleLine(false);
+        composerInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
         composerInput.setBackground(round(Color.WHITE, Color.rgb(218, 224, 231), 18));
         composerInput.setPadding(dp(12), dp(8), dp(12), dp(8));
+        composerInput.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                sendComposerQueue();
+                return true;
+            }
+            return false;
+        });
+        composerInput.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode != KeyEvent.KEYCODE_ENTER || event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (event.isCtrlPressed()) {
+                sendComposerGuide();
+                return true;
+            }
+            if (!event.isShiftPressed()) {
+                sendComposerQueue();
+                return true;
+            }
+            return false;
+        });
+        composerInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) main.postDelayed(this::scrollBottom, 120);
+        });
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, -2, 1);
         inputParams.setMargins(dp(8), 0, dp(8), 0);
         row.addView(composerInput, inputParams);
@@ -274,8 +306,12 @@ public class MainActivity extends Activity {
         stopButton.setOnClickListener(v -> stopCodex());
         row.addView(stopButton, new LinearLayout.LayoutParams(dp(46), dp(46)));
 
+        guideButton = secondaryButton("导");
+        guideButton.setOnClickListener(v -> sendComposerGuide());
+        row.addView(guideButton, new LinearLayout.LayoutParams(dp(46), dp(46)));
+
         sendButton = primaryButton("发");
-        sendButton.setOnClickListener(v -> sendText(composerInput.getText().toString(), false));
+        sendButton.setOnClickListener(v -> sendComposerQueue());
         row.addView(sendButton, new LinearLayout.LayoutParams(dp(46), dp(46)));
         return box;
     }
@@ -378,6 +414,7 @@ public class MainActivity extends Activity {
 
                 if (fromPoll) upsertAssistant(data);
                 boolean active = data.optBoolean("active") || "running".equals(status) || "waiting".equals(status);
+                activeRun = active;
                 if (active) schedulePoll();
                 else {
                     stopPolling();
@@ -387,31 +424,51 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void sendText(String text, boolean keepInput) {
+    private void sendComposerQueue() {
+        sendText(composerInput.getText().toString(), false, "queue");
+    }
+
+    private void sendComposerGuide() {
+        sendText(composerInput.getText().toString(), false, "guide");
+    }
+
+    private void sendText(String text, boolean keepInput, String submitMode) {
         String value = String.valueOf(text == null ? "" : text);
         if (value.trim().isEmpty() && attachments.isEmpty()) return;
         hideKeyboard();
+        boolean guide = "guide".equals(submitMode);
+        boolean queuedBehindActive = activeRun && !guide;
         JSONObject body = new JSONObject();
         put(body, "clientRequestId", "android-" + System.currentTimeMillis() + "-" + UUID.randomUUID());
         put(body, "text", value);
         put(body, "target", "codex");
         put(body, "threadId", selectedThreadId);
         put(body, "assumeThreadSynced", true);
+        put(body, "submitMode", guide ? "guide" : "queue");
         JSONArray files = new JSONArray();
         for (Attachment attachment : attachments) files.put(attachment.toJson());
         put(body, "attachments", files);
 
-        appendMessage("user", attachments.isEmpty() ? "你" : "你 · " + attachments.size() + " 张图片", value.trim().isEmpty() ? " " : value);
-        appendMessage("assistant", "Codex · 等待中", "已发送，等待 Codex 回复...");
+        appendMessage("user", (guide ? "你 · 引导" : activeRun ? "你 · 排队" : "你") + (attachments.isEmpty() ? "" : " · " + attachments.size() + " 张图片"), value.trim().isEmpty() ? " " : value);
+        if (guide) appendMessage("assistant", "Codex · 引导中", "正在作为当前回复的引导发送...");
+        else {
+            TextView bubble = appendMessage("assistant", activeRun ? "Codex · 已排队" : "Codex · 等待中", activeRun ? "已加入队列，Codex 会在当前回复后继续处理。" : "已发送，等待 Codex 回复...");
+            if (!queuedBehindActive) activeAssistantBubble = bubble;
+        }
         if (!keepInput) composerInput.setText("");
         attachments.clear();
         renderAttachments();
 
         request("POST", "/send", body, 60000, new JsonCallback() {
             public void done(JSONObject data) {
-                activeWatch = data.optJSONObject("watch");
                 toast(data.optString("message", "已发送"));
-                schedulePoll();
+                if (queuedBehindActive) {
+                    main.postDelayed(() -> refreshStatus(false), 900);
+                    return;
+                }
+                if (!guide) activeWatch = data.optJSONObject("watch");
+                if (guide) main.postDelayed(() -> refreshStatus(true), 800);
+                else schedulePoll();
             }
         });
     }
@@ -450,6 +507,7 @@ public class MainActivity extends Activity {
             public void done(JSONObject data) {
                 selectedThreadId = "";
                 activeWatch = null;
+                activeAssistantBubble = null;
                 messageList.removeAllViews();
                 renderThreadHeader(null);
                 toast(data.optString("message", "已打开新线程"));
@@ -713,6 +771,7 @@ public class MainActivity extends Activity {
 
     private void renderMessages(JSONArray messages) {
         messageList.removeAllViews();
+        activeAssistantBubble = null;
         if (messages == null || messages.length() == 0) {
             renderEmpty();
             return;
@@ -728,7 +787,7 @@ public class MainActivity extends Activity {
     private void upsertAssistant(JSONObject status) {
         String text = status.optString("final", status.optString("preview", ""));
         if (text.isEmpty()) text = status.optString("preview", "Codex 正在处理...");
-        TextView last = lastMessageBubble();
+        TextView last = activeAssistantBubble != null ? activeAssistantBubble : lastMessageBubble();
         if (last != null) last.setText(text);
     }
 
@@ -741,7 +800,7 @@ public class MainActivity extends Activity {
         return (TextView) group.getChildAt(1);
     }
 
-    private void appendMessage(String role, String label, String body) {
+    private TextView appendMessage(String role, String label, String body) {
         LinearLayout group = new LinearLayout(this);
         group.setOrientation(LinearLayout.VERTICAL);
         group.setGravity("user".equals(role) ? Gravity.RIGHT : Gravity.LEFT);
@@ -760,6 +819,7 @@ public class MainActivity extends Activity {
         group.addView(bubble, params);
         messageList.addView(group, matchWrap());
         scrollBottom();
+        return bubble;
     }
 
     private void renderEmpty() {
@@ -795,7 +855,6 @@ public class MainActivity extends Activity {
     private void setBusy(boolean value) {
         busy = value;
         if (progressBar != null) progressBar.setVisibility(value ? View.VISIBLE : View.GONE);
-        if (sendButton != null) sendButton.setEnabled(!value);
     }
 
     private ThreadItem findThread(String id) {
@@ -1031,6 +1090,24 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void installKeyboardBottomFix(View root) {
+        root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            Rect visible = new Rect();
+            root.getWindowVisibleDisplayFrame(visible);
+            int height = Math.max(1, root.getRootView().getHeight());
+            int hidden = height - visible.bottom;
+            boolean open = hidden > height * 0.15f;
+            if (keyboardOpen && !open) {
+                main.postDelayed(this::scrollBottom, 60);
+                main.postDelayed(this::scrollBottom, 180);
+                main.postDelayed(this::scrollBottom, 320);
+            } else if (open && composerInput != null && composerInput.hasFocus()) {
+                main.postDelayed(this::scrollBottom, 80);
+            }
+            keyboardOpen = open;
+        });
     }
 
     private void scrollBottom() {

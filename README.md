@@ -19,6 +19,7 @@ CodexPanel Android 是 CodexPanel 的安卓远控客户端。App 名称为 **Cod
 - 自动解析完整远控入口中的服务地址、设备路径和 token。
 - 原生线程列表、聊天记录、发送框、快捷操作。
 - 支持发送文本和图片附件。
+- 支持运行中继续发送，默认排队；支持引导发送，Android 按钮为“导”，外接键盘可用 Ctrl+Enter。
 - 支持停止生成、新建线程、选择线程。
 - 支持置顶、取消置顶、重命名、归档线程。
 - 支持模型切换、推理模式切换。
@@ -41,7 +42,7 @@ CodexPanel Android 是 CodexPanel 的安卓远控客户端。App 名称为 **Cod
    - Cloudflare 服务地址，例如 `https://codexpanel-wan.pages.dev`
    - 设备路径，例如 `/remote/win/`
    - 远控密钥
-4. 点击“保存并打开”。
+4. 点击“保存并连接”。
 
 ## 与 CodexPanel WAN 的关系
 

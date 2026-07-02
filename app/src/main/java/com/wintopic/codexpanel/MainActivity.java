@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -22,6 +23,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.MimeTypeMap;
@@ -107,6 +109,9 @@ public class MainActivity extends Activity {
             window.setStatusBarColor(Color.rgb(247, 249, 250));
             window.setNavigationBarColor(Color.rgb(247, 249, 250));
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         }
@@ -129,6 +134,7 @@ public class MainActivity extends Activity {
         stopPolling();
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
         scroll.setBackgroundColor(Color.rgb(247, 249, 250));
 
         LinearLayout root = new LinearLayout(this);
@@ -172,6 +178,7 @@ public class MainActivity extends Activity {
         hint.setPadding(0, dp(12), 0, 0);
         root.addView(hint, matchWrap());
 
+        applySystemBarInsets(scroll, true);
         setContentView(scroll);
     }
 
@@ -184,7 +191,7 @@ public class MainActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(12), dp(8), dp(12), dp(8));
         top.setOrientation(LinearLayout.HORIZONTAL);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(58)));
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
 
         LinearLayout titleBox = new LinearLayout(this);
         titleBox.setOrientation(LinearLayout.VERTICAL);
@@ -193,10 +200,10 @@ public class MainActivity extends Activity {
         connectionText = text("连接中...", 11, Color.rgb(94, 104, 115), false);
         titleBox.addView(connectionText, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        top.addView(toolbarButton("线程", v -> loadThreads(true)), new LinearLayout.LayoutParams(dp(56), dp(38)));
-        top.addView(toolbarButton("新建", v -> createNewThread()), new LinearLayout.LayoutParams(dp(56), dp(38)));
-        top.addView(toolbarButton("诊断", v -> showDiagnostics()), new LinearLayout.LayoutParams(dp(56), dp(38)));
-        top.addView(toolbarButton("设置", v -> showSetup()), new LinearLayout.LayoutParams(dp(56), dp(38)));
+        top.addView(toolbarButton("线程", v -> loadThreads(true)), new LinearLayout.LayoutParams(dp(52), dp(34)));
+        top.addView(toolbarButton("新建", v -> createNewThread()), new LinearLayout.LayoutParams(dp(52), dp(34)));
+        top.addView(toolbarButton("诊断", v -> showDiagnostics()), new LinearLayout.LayoutParams(dp(52), dp(34)));
+        top.addView(toolbarButton("设置", v -> showSetup()), new LinearLayout.LayoutParams(dp(52), dp(34)));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setIndeterminate(true);
@@ -222,6 +229,7 @@ public class MainActivity extends Activity {
         root.addView(quickActions(), new LinearLayout.LayoutParams(-1, dp(46)));
         root.addView(composer(), new LinearLayout.LayoutParams(-1, -2));
 
+        applySystemBarInsets(root, true);
         setContentView(root);
         installKeyboardBottomFix(root);
         renderEmpty();
@@ -1090,6 +1098,39 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void applySystemBarInsets(View view, boolean includeBottom) {
+        final int left = view.getPaddingLeft();
+        final int top = view.getPaddingTop();
+        final int right = view.getPaddingRight();
+        final int bottom = view.getPaddingBottom();
+        view.setOnApplyWindowInsetsListener((target, insets) -> {
+            int insetLeft = 0;
+            int insetTop = 0;
+            int insetRight = 0;
+            int insetBottom = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets bars = insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars() | WindowInsets.Type.displayCutout());
+                insetLeft = bars.left;
+                insetTop = bars.top;
+                insetRight = bars.right;
+                insetBottom = bars.bottom;
+            } else {
+                insetLeft = insets.getSystemWindowInsetLeft();
+                insetTop = insets.getSystemWindowInsetTop();
+                insetRight = insets.getSystemWindowInsetRight();
+                insetBottom = insets.getSystemWindowInsetBottom();
+            }
+            target.setPadding(
+                    left + insetLeft,
+                    top + insetTop,
+                    right + insetRight,
+                    bottom + (includeBottom ? insetBottom : 0)
+            );
+            return insets;
+        });
+        view.post(view::requestApplyInsets);
     }
 
     private void installKeyboardBottomFix(View root) {
